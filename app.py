@@ -55,6 +55,9 @@ retrieval_method = st.sidebar.selectbox(
 uploaded_file = st.file_uploader("Upload TXT or CSV Dataset", type=["txt", "csv"])
 
 documents = []
+index = {}
+biword_index = {}
+positional_index = {}
 
 if uploaded_file:
 
@@ -185,10 +188,133 @@ def create_inverted_index(docs):
     return dict(inverted_index)
 
 
+def create_biword_index(docs):
+    """
+    Creates Biword Index
+    Example:
+    "dark knight rises"
+    dark knight -> docID
+    knight rises -> docID
+    """
+
+    biword_index = defaultdict(list)
+
+    for doc_id, doc in enumerate(docs):
+
+        tokens, _ = preprocess(doc)
+
+        for i in range(len(tokens) - 1):
+
+            biword = f"{tokens[i]} {tokens[i + 1]}"
+
+            if doc_id not in biword_index[biword]:
+                biword_index[biword].append(doc_id)
+
+    return dict(biword_index)
+
+
+def create_positional_index(docs):
+    """
+    Positional Index
+    term ->docID ->positions
+    """
+
+    positional_index = defaultdict(lambda: defaultdict(list))
+
+    for doc_id, doc in enumerate(docs):
+        tokens, _ = preprocess(doc)
+
+        for position, token in enumerate(tokens):
+            positional_index[token][doc_id].append(position)
+
+    return positional_index
+
+
+def biword_phrase_search(query, biword_index):
+    """
+    Returns documents based on query from biword index
+    :param query: User Query
+    :param biword_index:  Biword Index
+    :return: Documents
+    """
+    query_tokens, _ = preprocess(query)
+
+    if len(query_tokens) < 2:
+        return []
+
+    query_biwords = []
+
+    for i in range(len(query_tokens) - 1):
+        query_biwords.append(f"{query_tokens[i]} {query_tokens[i + 1]}")
+
+    result_sets = []
+
+    for biword in query_biwords:
+
+        if biword in biword_index:
+            result_sets.append(set(biword_index[biword]))
+
+    if not result_sets:
+        return []
+
+    return list(set.intersection(*result_sets))
+
+
+def positional_phrase_search(query, positional_index):
+    """
+    Returns documents based on query from positional index
+    :param query: User Query
+    :param positional_index:  Positional Index
+    :return: Documents
+    """
+    query_tokens, _ = preprocess(query)
+
+    if len(query_tokens) == 0:
+        return []
+
+    candidate_docs = set(positional_index[query_tokens[0]].keys())
+
+    for token in query_tokens[1:]:
+        candidate_docs &= set(positional_index[token].keys())
+
+    final_results = []
+
+    for doc_id in candidate_docs:
+
+        first_positions = positional_index[query_tokens[0]][doc_id]
+
+        found = False
+
+        for pos in first_positions:
+
+            match = True
+
+            for offset in range(1, len(query_tokens)):
+
+                current_token = (query_tokens[offset])
+
+                if (pos + offset) not in positional_index[current_token][doc_id]:
+                    match = False
+                    break
+
+            if match:
+                found = True
+                break
+
+        if found:
+            final_results.append(doc_id)
+
+    return final_results
+
+
 # Tabs for Document Previews, Preprocessing Results, Inverted Index
 if documents:
 
     index = create_inverted_index(documents)
+
+    biword_index = create_biword_index(documents)
+
+    positional_index = create_positional_index(documents)
 
     st.header("Dataset Summary")
 
@@ -385,3 +511,84 @@ if documents:
                 Stemming performs better on this dataset because it reduces vocabulary size more aggressively.
                 """
             )
+
+# Phase Query Processing
+st.header("Phrase Query Processing")
+
+if documents:
+
+    phrase_query = st.text_input("Enter Phrase Query", placeholder="dark knight")
+
+    if phrase_query:
+
+        biword_results = biword_phrase_search(phrase_query, biword_index)
+
+        positional_results = positional_phrase_search(phrase_query, positional_index)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.subheader("Biword Index Results")
+
+            st.write("Matching Documents:", len(biword_results))
+
+            for doc_id in biword_results:
+                st.success(f"Document {doc_id + 1}")
+
+                st.write(documents[doc_id])
+
+        with col2:
+
+            st.subheader("Positional Index Results")
+
+            st.write("Matching Documents:", len(positional_results))
+
+            for doc_id in positional_results:
+                st.success(f"Document {doc_id + 1}")
+
+                st.write(documents[doc_id])
+
+        with st.expander("View Biword Index"):
+            st.json(dict(list(biword_index.items())[:20]))
+
+        with st.expander("View Positional Index"):
+            sample = {}
+
+            count = 0
+
+            for term, posting in positional_index.items():
+
+                sample[term] = dict(posting)
+
+                count += 1
+
+                if count == 10:
+                    break
+
+            st.json(sample)
+
+        st.subheader("Inference")
+
+        st.info(
+            """
+            Biword Index stores pairs of adjacent words.
+        
+            It is faster and smaller than a positional index.
+        
+            However, it may produce false positives
+            for long phrase queries because only
+            consecutive word pairs are checked.
+        
+            Positional Index stores exact positions
+            of every term in every document.
+        
+            Therefore it verifies that all query
+            terms occur in the exact sequence and
+            position.
+        
+            Positional Index is more accurate for
+            phrase searching, although it requires
+            additional storage.
+            """
+        )
