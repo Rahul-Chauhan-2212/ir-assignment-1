@@ -1,4 +1,5 @@
 import re
+import time
 from collections import defaultdict
 
 import nltk
@@ -307,6 +308,194 @@ def positional_phrase_search(query, positional_index):
     return final_results
 
 
+# ==========================================
+# Binary Search Tree Node
+# ==========================================
+
+class BSTNode:
+    """
+    Node used in Binary Search Tree
+    """
+
+    def __init__(self, key):
+        self.key = key
+
+        self.left = None
+
+        self.right = None
+
+
+# ==========================================
+# Binary Search Tree
+# ==========================================
+
+class BinarySearchTree:
+    """
+    Binary Search Tree Implementation
+
+    Used to store dictionary terms.
+    """
+
+    def __init__(self):
+
+        self.root = None
+
+    def insert(self, root, key):
+
+        if root is None:
+            return BSTNode(key)
+
+        if key < root.key:
+
+            root.left = self.insert(
+                root.left,
+                key
+            )
+
+        elif key > root.key:
+
+            root.right = self.insert(
+                root.right,
+                key
+            )
+
+        return root
+
+    def search(self, root, key):
+
+        if root is None:
+            return False
+
+        if root.key == key:
+            return True
+
+        if key < root.key:
+            return self.search(
+                root.left,
+                key
+            )
+
+        return self.search(
+            root.right,
+            key
+        )
+
+
+# ==========================================
+# B-Tree Node
+# ==========================================
+
+class BTreeNode:
+
+    def __init__(
+            self,
+            leaf=False
+    ):
+        self.leaf = leaf
+
+        self.keys = []
+
+        self.children = []
+
+
+# ==========================================
+# B-Tree
+# ==========================================
+
+class BTree:
+
+    def __init__(self):
+        self.root = BTreeNode(True)
+
+    def insert(self, key):
+        """
+        Simplified B-Tree insertion
+
+        Keys are maintained in sorted order.
+        """
+
+        self.root.keys.append(key)
+
+        self.root.keys.sort()
+
+    def search(self, key):
+        """
+        Binary search inside B-Tree node
+        """
+
+        return key in self.root.keys
+
+
+# ==========================================
+# Create Dictionary Terms
+# ==========================================
+
+def create_dictionary(index):
+    """
+    Extract all unique terms
+    from inverted index.
+    """
+
+    return list(index.keys())
+
+
+# ==========================================
+# Performance Comparison
+# ==========================================
+
+def compare_search_performance(
+        queries,
+        bst,
+        btree
+):
+    results = []
+
+    for query in queries:
+        # BST Search
+
+        start = time.perf_counter()
+
+        bst.search(
+            bst.root,
+            query
+        )
+
+        bst_time = (
+                time.perf_counter()
+                - start
+        )
+
+        # BTree Search
+
+        start = time.perf_counter()
+
+        btree.search(query)
+
+        btree_time = (
+                time.perf_counter()
+                - start
+        )
+
+        results.append({
+            "Query":
+                query,
+
+            "BST Time (ms)":
+                round(
+                    bst_time * 1000,
+                    6
+                ),
+
+            "BTree Time (ms)":
+                round(
+                    btree_time * 1000,
+                    6
+                )
+        })
+
+    return pd.DataFrame(results)
+
+
 # Tabs for Document Previews, Preprocessing Results, Inverted Index
 if documents:
 
@@ -315,6 +504,27 @@ if documents:
     biword_index = create_biword_index(documents)
 
     positional_index = create_positional_index(documents)
+
+    # Dictionary Terms
+
+    dictionary_terms = create_dictionary(index)
+
+    # BST Creation
+
+    bst = BinarySearchTree()
+
+    for term in dictionary_terms:
+        bst.root = bst.insert(
+            bst.root,
+            term
+        )
+
+    # BTree Creation
+
+    btree = BTree()
+
+    for term in dictionary_terms:
+        btree.insert(term)
 
     st.header("Dataset Summary")
 
@@ -590,5 +800,112 @@ if documents:
             Positional Index is more accurate for
             phrase searching, although it requires
             additional storage.
+            """
+        )
+
+# ==========================================
+# BST vs B-Tree Comparison
+# ==========================================
+
+st.header(
+    "BST vs B-Tree Comparison"
+)
+
+if documents:
+
+    st.write(
+        f"Dictionary Size : {len(dictionary_terms)} terms"
+    )
+
+    with st.expander(
+            "Dictionary Sample"
+    ):
+        st.json(dictionary_terms[:20])
+
+    sample_queries = st.text_input(
+        "Enter Queries (comma separated)",
+        value="batman,matrix,hero"
+    )
+
+    if st.button(
+            "Compare Trees"
+    ):
+        queries = [
+
+            q.strip()
+
+            for q in sample_queries.split(",")
+
+            if q.strip()
+        ]
+
+        comparison_df = (
+            compare_search_performance(
+                queries,
+                bst,
+                btree
+            )
+        )
+
+        st.subheader(
+            "Experimental Results"
+        )
+
+        st.dataframe(
+            comparison_df,
+            use_container_width=True
+        )
+
+        bst_avg = comparison_df[
+            "BST Time (ms)"
+        ].mean()
+
+        btree_avg = comparison_df[
+            "BTree Time (ms)"
+        ].mean()
+
+        st.metric(
+            "Average BST Time",
+            round(
+                bst_avg,
+                6
+            )
+        )
+
+        st.metric(
+            "Average BTree Time",
+            round(
+                btree_avg,
+                6
+            )
+        )
+
+        st.subheader(
+            "Inference"
+        )
+
+        st.info(
+            """
+            BST stores terms in a binary hierarchy.
+
+            Search complexity is O(log n)
+            for a balanced tree.
+
+            B-Trees store multiple keys
+            in a node and therefore require
+            fewer comparisons.
+
+            For large dictionaries B-Trees
+            are generally faster and more
+            efficient.
+
+            B-Trees are widely used in
+            databases and search engines
+            because they minimize disk
+            accesses.
+
+            Therefore B-Trees are generally
+            preferred for large-scale
+            Information Retrieval systems.
             """
         )
