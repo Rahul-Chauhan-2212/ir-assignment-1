@@ -64,7 +64,6 @@ uploaded_file = st.file_uploader("Upload TXT or CSV Dataset", type=["txt", "csv"
 
 documents = []
 index = {}
-inverted_index = {}
 biword_index = {}
 positional_index = {}
 
@@ -198,6 +197,7 @@ def create_inverted_index(docs):
     :param docs: Documents
     :return: inverted_index
     """
+    inverted_index = {}
     for doc_id, doc in enumerate(docs):
 
         tokens, _ = preprocess(doc)
@@ -310,15 +310,14 @@ def positional_phrase_search(query, positional_index):
     if len(query_tokens) == 0:
         return []
 
-    if not query_tokens:
-        return []
-
     if query_tokens[0] not in positional_index:
         return []
 
     candidate_docs = set(positional_index[query_tokens[0]].keys())
 
     for token in query_tokens[1:]:
+        if token not in positional_index:
+            return []
         candidate_docs &= set(positional_index[token].keys())
 
     final_results = []
@@ -659,8 +658,14 @@ if documents:
                 term = token[0]
 
                 if term in index:
-                    st.success(f"Found in {len(index[term])} document(s)")
-                    st.write("Document IDs:", [x + 1 for x in index[term]])
+                    st.success(
+                        f"Found in {index[term]['df']} document(s)"
+                    )
+
+                    st.write(
+                        "Document IDs:",
+                        [x + 1 for x in index[term]["postings"]]
+                    )
                 else:
                     st.warning("Term not found in index")
 
@@ -726,7 +731,7 @@ if documents:
         for doc in documents:
             doc = doc.lower()
 
-            tokens = doc.split()
+            tokens = word_tokenize(doc)
 
             tokens = [
                 t
