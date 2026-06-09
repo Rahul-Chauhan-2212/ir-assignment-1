@@ -1,8 +1,3 @@
-import re
-import time
-from bisect import bisect_left
-from collections import defaultdict
-
 import nltk
 import pandas as pd
 import streamlit as st
@@ -13,10 +8,29 @@ from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from modules.evaluation import (
+    compare_search_performance
+)
+from modules.indexing import (
+    create_inverted_index,
+    create_biword_index,
+    create_positional_index,
+    create_dictionary
+)
+from modules.phrase_search import (
+    biword_phrase_search,
+    positional_phrase_search
+)
+from modules.preprocessing import preprocess
+from modules.trees import (
+    BinarySearchTree,
+    BTree,
+    build_balanced_bst
+)
+
 # NLTK Library Downloads
 nltk.download('stopwords')
 nltk.download('wordnet')
-nltk.download('omw-1.4')
 nltk.download("punkt")
 nltk.download("punkt_tab")
 
@@ -122,483 +136,6 @@ stemmer = PorterStemmer()
 
 lemmatizer = WordNetLemmatizer()
 
-
-# Preprocessing
-def preprocess(text):
-    """
-    Preprocess the text based on the selected Preprocessing methods
-    Returns Final Tokens and Intermediate Steps Results
-    :param text: Document
-    :return: final_tokens, intermediate_steps
-    """
-    intermediate_steps = {}
-
-    intermediate_steps["Original"] = text
-
-    # Lower case the input document
-    if use_lowercase:
-        text = text.lower()
-
-    intermediate_steps["After Lowercase"] = text
-
-    # Remove Hyphens
-    if hyphen_handling:
-        text = re.sub(r"(?<=\w)-(?=\w)", " ", text)
-
-    intermediate_steps["After Hyphen Handling"] = text
-
-    # Remove Punctuations
-    if remove_punctuation:
-        text = re.sub(r"[^\w\s]", "", text)
-
-    intermediate_steps["After Punctuation Removal"] = text
-
-    # Tokenize the document
-    if tokenization:
-        tokens = word_tokenize(text)
-    else:
-        tokens = [text]
-
-    intermediate_steps["After Tokenization"] = tokens
-
-    # Remove Stop words from tokens
-    if remove_stopwords:
-        tokens = [
-            token
-            for token in tokens
-            if token not in stop_words
-        ]
-
-    intermediate_steps["After Stopword Removal"] = tokens
-
-    final_tokens = tokens
-
-    if normalization_method == "Stemming":
-
-        # Perform Stemming
-        stemmed_tokens = [
-            stemmer.stem(token)
-            for token in tokens
-        ]
-
-        intermediate_steps["After Stemming"] = stemmed_tokens
-
-        final_tokens = stemmed_tokens
-
-    elif normalization_method == "Lemmatization":
-
-        # Perform Lemmatization
-        lemmatized_tokens = [
-            lemmatizer.lemmatize(token)
-            for token in tokens
-        ]
-
-        intermediate_steps["After Lemmatization"] = lemmatized_tokens
-
-        final_tokens = lemmatized_tokens
-
-    return final_tokens, intermediate_steps
-
-
-# Inverted Index Creation
-def create_inverted_index(docs):
-    """
-    Create Inverted Index using documents
-    :param docs: Documents
-    :return: inverted_index
-    """
-    inverted_index = {}
-    for doc_id, doc in enumerate(docs):
-
-        tokens, _ = preprocess(doc)
-
-        for token in tokens:
-
-            if token not in inverted_index:
-                inverted_index[token] = {
-
-                    "df": 0,
-
-                    "postings": []
-                }
-
-            if doc_id not in inverted_index[token]["postings"]:
-                inverted_index[token][
-                    "postings"
-                ].append(doc_id)
-
-                inverted_index[token][
-                    "df"
-                ] += 1
-
-    return inverted_index
-
-
-def create_biword_index(docs):
-    """
-    Creates Biword Index
-    Example:
-    "dark knight rises"
-    dark knight -> docID
-    knight rises -> docID
-    """
-
-    biword_index = defaultdict(list)
-
-    for doc_id, doc in enumerate(docs):
-
-        tokens, _ = preprocess(doc)
-
-        for i in range(len(tokens) - 1):
-
-            biword = f"{tokens[i]} {tokens[i + 1]}"
-
-            if doc_id not in biword_index[biword]:
-                biword_index[biword].append(doc_id)
-
-    return dict(biword_index)
-
-
-def create_positional_index(docs):
-    """
-    Positional Index
-    term ->docID ->positions
-    """
-
-    positional_index = defaultdict(lambda: defaultdict(list))
-
-    for doc_id, doc in enumerate(docs):
-        tokens, _ = preprocess(doc)
-
-        for position, token in enumerate(tokens):
-            positional_index[token][doc_id].append(position)
-
-    return positional_index
-
-
-def biword_phrase_search(query, biword_index):
-    """
-    Returns documents based on query from biword index
-    :param query: User Query
-    :param biword_index:  Biword Index
-    :return: Documents
-    """
-    query_tokens, _ = preprocess(query)
-
-    if len(query_tokens) < 2:
-        return []
-
-    query_biwords = []
-
-    for i in range(len(query_tokens) - 1):
-        query_biwords.append(f"{query_tokens[i]} {query_tokens[i + 1]}")
-
-    result_sets = []
-
-    for biword in query_biwords:
-
-        if biword not in biword_index:
-            return []
-
-        result_sets.append(set(biword_index[biword]))
-
-    if not result_sets:
-        return []
-
-    return list(set.intersection(*result_sets))
-
-
-def positional_phrase_search(query, positional_index):
-    """
-    Returns documents based on query from positional index
-    :param query: User Query
-    :param positional_index:  Positional Index
-    :return: Documents
-    """
-    query_tokens, _ = preprocess(query)
-
-    if len(query_tokens) == 0:
-        return []
-
-    if query_tokens[0] not in positional_index:
-        return []
-
-    candidate_docs = set(positional_index[query_tokens[0]].keys())
-
-    for token in query_tokens[1:]:
-        if token not in positional_index:
-            return []
-        candidate_docs &= set(positional_index[token].keys())
-
-    final_results = []
-
-    for doc_id in candidate_docs:
-
-        first_positions = positional_index[query_tokens[0]][doc_id]
-
-        found = False
-
-        for pos in first_positions:
-
-            match = True
-
-            for offset in range(1, len(query_tokens)):
-
-                current_token = (query_tokens[offset])
-
-                if (pos + offset) not in positional_index[current_token][doc_id]:
-                    match = False
-                    break
-
-            if match:
-                found = True
-                break
-
-        if found:
-            final_results.append(doc_id)
-
-    return final_results
-
-
-# ==========================================
-# Binary Search Tree Node
-# ==========================================
-
-class BSTNode:
-    """
-    Node used in Binary Search Tree
-    """
-
-    def __init__(self, key):
-        self.key = key
-
-        self.left = None
-
-        self.right = None
-
-
-# ==========================================
-# Binary Search Tree
-# ==========================================
-
-class BinarySearchTree:
-    """
-    Binary Search Tree Implementation
-
-    Used to store dictionary terms.
-    """
-
-    def __init__(self):
-
-        self.root = None
-
-    def insert(self, root, key):
-
-        if root is None:
-            return BSTNode(key)
-
-        if key < root.key:
-
-            root.left = self.insert(
-                root.left,
-                key
-            )
-
-        elif key > root.key:
-
-            root.right = self.insert(
-                root.right,
-                key
-            )
-
-        return root
-
-    def search(self, root, key):
-
-        if root is None:
-            return False
-
-        if root.key == key:
-            return True
-
-        if key < root.key:
-            return self.search(root.left, key)
-
-        return self.search(root.right, key)
-
-
-# ==========================================
-# B-Tree Node
-# ==========================================
-
-class BTreeNode:
-
-    def __init__(
-            self,
-            leaf=False
-    ):
-        self.leaf = leaf
-
-        self.keys = []
-
-        self.children = []
-
-
-# ==========================================
-# B-Tree
-# ==========================================
-
-class BTree:
-
-    def __init__(self):
-        self.root = BTreeNode(True)
-
-    def insert(self, key):
-        """
-        Simplified B-Tree insertion
-
-        Keys are maintained in sorted order.
-        """
-
-        self.root.keys.append(key)
-
-        self.root.keys.sort()
-
-    def search(self, key):
-        """
-        Binary search inside B-Tree node
-        """
-
-        idx = bisect_left(
-            self.root.keys,
-            key
-        )
-
-        return (
-                idx < len(self.root.keys)
-                and self.root.keys[idx] == key
-        )
-
-
-def build_balanced_bst(bst, terms):
-    if not terms:
-        return
-
-    mid = len(terms) // 2
-
-    bst.root = bst.insert(
-        bst.root,
-        terms[mid]
-    )
-
-    build_balanced_bst(
-        bst,
-        terms[:mid]
-    )
-
-    build_balanced_bst(
-        bst,
-        terms[mid + 1:]
-    )
-
-
-# ==========================================
-# Create Dictionary Terms
-# ==========================================
-
-def create_dictionary(index):
-    """
-    Extract all unique terms
-    from inverted index.
-    """
-
-    return list(index.keys())
-
-
-# ==========================================
-# Performance Comparison
-# ==========================================
-
-def compare_search_performance(
-        queries,
-        bst,
-        btree,
-        index
-):
-    results = []
-
-    for query in queries:
-        start = time.perf_counter()
-
-        bst.search(
-            bst.root,
-            query
-        )
-
-        bst_search_time = (
-                time.perf_counter()
-                - start
-        )
-
-        start = time.perf_counter()
-
-        postings = []
-
-        if query in index:
-            postings = index[query]["postings"]
-
-        for doc_id in postings:
-            _ = doc_id
-
-        bst_retrieval_time = (
-                time.perf_counter()
-                - start
-        )
-
-        start = time.perf_counter()
-
-        btree.search(query)
-
-        btree_search_time = (
-                time.perf_counter()
-                - start
-        )
-
-        start = time.perf_counter()
-
-        postings = []
-
-        if query in index:
-            postings = index[query]["postings"]
-
-        for doc_id in postings:
-            _ = doc_id
-
-        btree_retrieval_time = (
-                time.perf_counter()
-                - start
-        )
-
-        results.append({
-
-            "Query": query,
-
-            "BST Search (ms)":
-                bst_search_time * 1000,
-
-            "BST Retrieval (ms)":
-                bst_retrieval_time * 1000,
-
-            "BTree Search (ms)":
-                btree_search_time * 1000,
-
-            "BTree Retrieval (ms)":
-                btree_retrieval_time * 1000
-        })
-
-    return pd.DataFrame(results)
-
-
 # Tabs for Document Previews, Preprocessing Results, Inverted Index
 if documents:
 
@@ -655,7 +192,8 @@ if documents:
         selected_doc_pre = st.selectbox("Select Document for Analysis", range(len(documents)),
                                         format_func=lambda x: f"Document {x + 1}", key="pre_doc")
         with st.expander("Show Intermediate Outputs"):
-            _, steps = preprocess(documents[selected_doc_pre])
+            _, steps = preprocess(documents[selected_doc_pre], use_lowercase, remove_punctuation, remove_stopwords,
+                                  hyphen_handling, tokenization, normalization_method)
 
             for step, value in steps.items():
                 st.subheader(step)
@@ -676,7 +214,8 @@ if documents:
         search_term = st.text_input("Inspect a Term")
 
         if search_term:
-            token, _ = preprocess(search_term)
+            token, _ = preprocess(search_term, use_lowercase, remove_punctuation, remove_stopwords, hyphen_handling,
+                                  tokenization, normalization_method)
 
             if token:
                 term = token[0]
@@ -708,7 +247,8 @@ if st.button("Search"):
         st.warning("Please enter a search query.")
     else:
         # Apply same preprocess on the queries
-        query_tokens, query_steps = (preprocess(query))
+        query_tokens, query_steps = preprocess(query, use_lowercase, remove_punctuation, remove_stopwords,
+                                               hyphen_handling, tokenization, normalization_method)
 
         # To show preprocssing happened on Seacrh Query
         with st.expander("Query Processing Details"):
@@ -842,9 +382,12 @@ if documents:
 
     if phrase_query:
 
-        biword_results = biword_phrase_search(phrase_query, biword_index)
+        query_tokens, _ = preprocess(phrase_query, use_lowercase, remove_punctuation, remove_stopwords, hyphen_handling,
+                                     tokenization, normalization_method)
 
-        positional_results = positional_phrase_search(phrase_query, positional_index)
+        biword_results = biword_phrase_search(query_tokens, biword_index)
+
+        positional_results = positional_phrase_search(query_tokens, positional_index)
 
         col1, col2 = st.columns(2)
 
