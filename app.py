@@ -1,5 +1,6 @@
 import re
 import time
+from bisect import bisect_left
 from collections import defaultdict
 
 import nltk
@@ -17,6 +18,7 @@ nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 nltk.download("punkt")
+nltk.download("punkt_tab")
 
 st.set_page_config(
     page_title="Information Retrieval System",
@@ -75,7 +77,10 @@ if uploaded_file:
 
         if uploaded_file.name.endswith(".txt"):
 
-            content = uploaded_file.read().decode("utf-8")
+            content = uploaded_file.read().decode(
+                "utf-8",
+                errors="ignore"
+            )
 
             documents = [
                 line.strip()
@@ -91,8 +96,13 @@ if uploaded_file:
 
             st.dataframe(df.head())
 
+            text_column = st.selectbox(
+                "Select Document Column",
+                df.columns
+            )
+
             documents = (
-                df.iloc[:, 0]
+                df[text_column]
                 .astype(str)
                 .tolist()
             )
@@ -412,15 +422,9 @@ class BinarySearchTree:
             return True
 
         if key < root.key:
-            return self.search(
-                root.left,
-                key
-            )
+            return self.search(root.left, key)
 
-        return self.search(
-            root.right,
-            key
-        )
+        return self.search(root.right, key)
 
 
 # ==========================================
@@ -465,7 +469,15 @@ class BTree:
         Binary search inside B-Tree node
         """
 
-        return key in self.root.keys
+        idx = bisect_left(
+            self.root.keys,
+            key
+        )
+
+        return (
+                idx < len(self.root.keys)
+                and self.root.keys[idx] == key
+        )
 
 
 def build_balanced_bst(bst, terms):
@@ -530,7 +542,13 @@ def compare_search_performance(
 
         start = time.perf_counter()
 
-        index.get(query, [])
+        postings = []
+
+        if query in index:
+            postings = index[query]["postings"]
+
+        for doc_id in postings:
+            _ = doc_id
 
         bst_retrieval_time = (
                 time.perf_counter()
@@ -548,7 +566,13 @@ def compare_search_performance(
 
         start = time.perf_counter()
 
-        index.get(query, [])
+        postings = []
+
+        if query in index:
+            postings = index[query]["postings"]
+
+        for doc_id in postings:
+            _ = doc_id
 
         btree_retrieval_time = (
                 time.perf_counter()
@@ -672,7 +696,10 @@ if documents:
 # Search Functionality
 st.header("Search Query")
 
-query = st.text_input("Enter Search Query")
+query = st.text_input(
+    "Enter Search Query",
+    key="search_query"
+)
 
 if st.button("Search"):
     if not documents:
@@ -680,8 +707,6 @@ if st.button("Search"):
     elif not query:
         st.warning("Please enter a search query.")
     else:
-        # Inverted index for documents
-        index = create_inverted_index(documents)
         # Apply same preprocess on the queries
         query_tokens, query_steps = (preprocess(query))
 
@@ -810,7 +835,10 @@ st.header("Phrase Query Processing")
 
 if documents:
 
-    phrase_query = st.text_input("Enter Phrase Query", placeholder="dark knight")
+    phrase_query = st.text_input(
+        "Enter Phrase Query",
+        key="phrase_query"
+    )
 
     if phrase_query:
 
@@ -907,6 +935,7 @@ if documents:
 
     sample_queries = st.text_input(
         "Enter Queries (comma separated)",
+        key="tree_queries",
         value="batman,matrix,hero"
     )
 
