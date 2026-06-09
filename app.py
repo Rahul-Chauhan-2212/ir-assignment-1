@@ -204,11 +204,10 @@ if documents:
         # Shows Inverted Index for the document
         st.metric("Unique Terms", len(index))
 
-        st.subheader("Sample Inverted Index")
-
         sample_index = dict(list(index.items())[:20])
 
-        st.json(sample_index)
+        with st.expander("Sample Inverted Index"):
+            st.json(sample_index)
 
         # Search the term from inverted index and provides document id
         search_term = st.text_input("Inspect a Term")
@@ -232,61 +231,58 @@ if documents:
                 else:
                     st.warning("Term not found in index")
 
-# Search Functionality
-st.header("Search Query")
+    # Search Functionality
+    st.header("Search Query")
 
-query = st.text_input(
-    "Enter Search Query",
-    key="search_query"
-)
+    query = st.text_input(
+        "Enter Search Query",
+        key="search_query"
+    )
 
-if st.button("Search"):
-    if not documents:
-        st.warning("Please upload a dataset first.")
-    elif not query:
-        st.warning("Please enter a search query.")
-    else:
-        # Apply same preprocess on the queries
-        query_tokens, query_steps = preprocess(query, use_lowercase, remove_punctuation, remove_stopwords,
-                                               hyphen_handling, tokenization, normalization_method)
-
-        # To show preprocssing happened on Seacrh Query
-        with st.expander("Query Processing Details"):
-            st.json(query_steps)
-
-        results = set()
-
-        # Retrieval Based on Selected Option
-        if retrieval_method == "Keyword Matching":
-            for token in query_tokens:
-                if token in index:
-                    results.update(index[token]["postings"])
-
-        elif retrieval_method == "Boolean Retrieval":
-            posting_lists = []
-            for token in query_tokens:
-                if token in index:
-                    posting_lists.append(set(index[token]["postings"]))
-
-            if posting_lists:
-                results = set.intersection(*posting_lists)
-
-        st.header("Search Results")
-
-        if not results:
-            st.error("No matching documents found.")
+    if st.button("Search"):
+        if not query:
+            st.warning("Please enter a search query.")
         else:
-            st.success(f"{len(results)} document(s) found")
+            # Apply same preprocess on the queries
+            query_tokens, query_steps = preprocess(query, use_lowercase, remove_punctuation, remove_stopwords,
+                                                   hyphen_handling, tokenization, normalization_method)
 
-            # Show Search Results doc id and document
-            for doc_id in sorted(results):
-                with st.expander(f"Document {doc_id + 1}"):
-                    st.write(documents[doc_id])
+            # To show preprocssing happened on Seacrh Query
+            with st.expander("Query Processing Details"):
+                st.json(query_steps)
 
-# Stemming vs Lemmatization Comparison
-st.header("Stemming vs Lemmatization Comparison")
+            results = set()
 
-if documents:
+            # Retrieval Based on Selected Option
+            if retrieval_method == "Keyword Matching":
+                for token in query_tokens:
+                    if token in index:
+                        results.update(index[token]["postings"])
+
+            elif retrieval_method == "Boolean Retrieval":
+                posting_lists = []
+                for token in query_tokens:
+                    if token in index:
+                        posting_lists.append(set(index[token]["postings"]))
+
+                if posting_lists:
+                    results = set.intersection(*posting_lists)
+
+            st.header("Search Results")
+
+            if not results:
+                st.error("No matching documents found.")
+            else:
+                st.success(f"{len(results)} document(s) found")
+
+                # Show Search Results doc id and document
+                for doc_id in sorted(results):
+                    with st.expander(f"Document {doc_id + 1}"):
+                        st.write(documents[doc_id])
+
+
+    # Stemming vs Lemmatization Comparison
+    st.header("Stemming vs Lemmatization Comparison")
 
     if st.button("Run Comparison"):
 
@@ -370,10 +366,8 @@ if documents:
                 """
             )
 
-# Phase Query Processing
-st.header("Phrase Query Processing")
-
-if documents:
+    # Phase Query Processing
+    st.header("Phrase Query Processing")
 
     phrase_query = st.text_input(
         "Enter Phrase Query",
@@ -457,15 +451,13 @@ if documents:
             """
         )
 
-# ==========================================
-# BST vs B-Tree Comparison
-# ==========================================
+    # ==========================================
+    # BST vs B-Tree Comparison
+    # ==========================================
 
-st.header(
-    "BST vs B-Tree Comparison"
-)
-
-if documents:
+    st.header(
+        "BST vs B-Tree Comparison"
+    )
 
     st.write(
         f"Dictionary Size : {len(dictionary_terms)} terms"
