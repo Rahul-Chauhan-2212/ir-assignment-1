@@ -8,6 +8,7 @@ import streamlit as st
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -15,6 +16,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
+nltk.download("punkt")
 
 st.set_page_config(
     page_title="Information Retrieval System",
@@ -37,9 +39,14 @@ hyphen_handling = st.sidebar.checkbox("Hyphen Handling", value=True)
 
 tokenization = st.sidebar.checkbox("Tokenization", value=True)
 
-use_stemming = st.sidebar.checkbox("Apply Stemming")
-
-use_lemmatization = st.sidebar.checkbox("Apply Lemmatization")
+normalization_method = st.sidebar.radio(
+    "Normalization Method",
+    [
+        "None",
+        "Stemming",
+        "Lemmatization"
+    ]
+)
 
 # Retrieval Options
 st.sidebar.header("Retrieval Options")
@@ -57,6 +64,7 @@ uploaded_file = st.file_uploader("Upload TXT or CSV Dataset", type=["txt", "csv"
 
 documents = []
 index = {}
+inverted_index = {}
 biword_index = {}
 positional_index = {}
 
@@ -64,29 +72,39 @@ if uploaded_file:
 
     st.success("Dataset Uploaded Successfully")
 
-    if uploaded_file.name.endswith(".txt"):
+    try:
 
-        content = uploaded_file.read().decode("utf-8")
+        if uploaded_file.name.endswith(".txt"):
 
-        documents = [
-            line.strip()
-            for line in content.split("\n")
-            if line.strip()
-        ]
+            content = uploaded_file.read().decode("utf-8")
 
-    elif uploaded_file.name.endswith(".csv"):
+            documents = [
+                line.strip()
+                for line in content.split("\n")
+                if line.strip()
+            ]
 
-        df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(".csv"):
 
-        st.subheader("Dataset Preview")
+            df = pd.read_csv(uploaded_file)
 
-        st.dataframe(df.head())
+            st.subheader("Dataset Preview")
 
-        documents = (
-            df.iloc[:, 0]
-            .astype(str)
-            .tolist()
+            st.dataframe(df.head())
+
+            documents = (
+                df.iloc[:, 0]
+                .astype(str)
+                .tolist()
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"File Error: {e}"
         )
+
+        st.stop()
 
 # Initialise List of stop words, Stemmer and Lemmatizer Instances
 stop_words = set(stopwords.words("english"))
@@ -116,7 +134,7 @@ def preprocess(text):
 
     # Remove Hyphens
     if hyphen_handling:
-        text = text.replace("-", " ")
+        text = re.sub(r"(?<=\w)-(?=\w)", " ", text)
 
     intermediate_steps["After Hyphen Handling"] = text
 
@@ -127,7 +145,10 @@ def preprocess(text):
     intermediate_steps["After Punctuation Removal"] = text
 
     # Tokenize the document
-    tokens = text.split()
+    if tokenization:
+        tokens = word_tokenize(text)
+    else:
+        tokens = [text]
 
     intermediate_steps["After Tokenization"] = tokens
 
@@ -141,28 +162,30 @@ def preprocess(text):
 
     intermediate_steps["After Stopword Removal"] = tokens
 
-    # Perform Stemming
-    stemmed_tokens = [
-        stemmer.stem(token)
-        for token in tokens
-    ]
-
-    intermediate_steps["After Stemming"] = stemmed_tokens
-
-    # Perform Lemmatization
-    lemmatized_tokens = [
-        lemmatizer.lemmatize(token)
-        for token in tokens
-    ]
-
-    intermediate_steps["After Lemmatization"] = lemmatized_tokens
-
     final_tokens = tokens
 
-    if use_stemming:
+    if normalization_method == "Stemming":
+
+        # Perform Stemming
+        stemmed_tokens = [
+            stemmer.stem(token)
+            for token in tokens
+        ]
+
+        intermediate_steps["After Stemming"] = stemmed_tokens
+
         final_tokens = stemmed_tokens
 
-    elif use_lemmatization:
+    elif normalization_method == "Lemmatization":
+
+        # Perform Lemmatization
+        lemmatized_tokens = [
+            lemmatizer.lemmatize(token)
+            for token in tokens
+        ]
+
+        intermediate_steps["After Lemmatization"] = lemmatized_tokens
+
         final_tokens = lemmatized_tokens
 
     return final_tokens, intermediate_steps
@@ -175,18 +198,30 @@ def create_inverted_index(docs):
     :param docs: Documents
     :return: inverted_index
     """
-    inverted_index = defaultdict(list)
-
     for doc_id, doc in enumerate(docs):
 
         tokens, _ = preprocess(doc)
 
         for token in tokens:
 
-            if doc_id not in inverted_index[token]:
-                inverted_index[token].append(doc_id)
+            if token not in inverted_index:
+                inverted_index[token] = {
 
-    return dict(inverted_index)
+                    "df": 0,
+
+                    "postings": []
+                }
+
+            if doc_id not in inverted_index[token]["postings"]:
+                inverted_index[token][
+                    "postings"
+                ].append(doc_id)
+
+                inverted_index[token][
+                    "df"
+                ] += 1
+
+    return inverted_index
 
 
 def create_biword_index(docs):
@@ -252,8 +287,10 @@ def biword_phrase_search(query, biword_index):
 
     for biword in query_biwords:
 
-        if biword in biword_index:
-            result_sets.append(set(biword_index[biword]))
+        if biword not in biword_index:
+            return []
+
+        result_sets.append(set(biword_index[biword]))
 
     if not result_sets:
         return []
@@ -271,6 +308,12 @@ def positional_phrase_search(query, positional_index):
     query_tokens, _ = preprocess(query)
 
     if len(query_tokens) == 0:
+        return []
+
+    if not query_tokens:
+        return []
+
+    if query_tokens[0] not in positional_index:
         return []
 
     candidate_docs = set(positional_index[query_tokens[0]].keys())
@@ -426,6 +469,28 @@ class BTree:
         return key in self.root.keys
 
 
+def build_balanced_bst(bst, terms):
+    if not terms:
+        return
+
+    mid = len(terms) // 2
+
+    bst.root = bst.insert(
+        bst.root,
+        terms[mid]
+    )
+
+    build_balanced_bst(
+        bst,
+        terms[:mid]
+    )
+
+    build_balanced_bst(
+        bst,
+        terms[mid + 1:]
+    )
+
+
 # ==========================================
 # Create Dictionary Terms
 # ==========================================
@@ -446,13 +511,12 @@ def create_dictionary(index):
 def compare_search_performance(
         queries,
         bst,
-        btree
+        btree,
+        index
 ):
     results = []
 
     for query in queries:
-        # BST Search
-
         start = time.perf_counter()
 
         bst.search(
@@ -460,37 +524,53 @@ def compare_search_performance(
             query
         )
 
-        bst_time = (
+        bst_search_time = (
                 time.perf_counter()
                 - start
         )
 
-        # BTree Search
+        start = time.perf_counter()
+
+        index.get(query, [])
+
+        bst_retrieval_time = (
+                time.perf_counter()
+                - start
+        )
 
         start = time.perf_counter()
 
         btree.search(query)
 
-        btree_time = (
+        btree_search_time = (
+                time.perf_counter()
+                - start
+        )
+
+        start = time.perf_counter()
+
+        index.get(query, [])
+
+        btree_retrieval_time = (
                 time.perf_counter()
                 - start
         )
 
         results.append({
-            "Query":
-                query,
 
-            "BST Time (ms)":
-                round(
-                    bst_time * 1000,
-                    6
-                ),
+            "Query": query,
 
-            "BTree Time (ms)":
-                round(
-                    btree_time * 1000,
-                    6
-                )
+            "BST Search (ms)":
+                bst_search_time * 1000,
+
+            "BST Retrieval (ms)":
+                bst_retrieval_time * 1000,
+
+            "BTree Search (ms)":
+                btree_search_time * 1000,
+
+            "BTree Retrieval (ms)":
+                btree_retrieval_time * 1000
         })
 
     return pd.DataFrame(results)
@@ -513,11 +593,9 @@ if documents:
 
     bst = BinarySearchTree()
 
-    for term in dictionary_terms:
-        bst.root = bst.insert(
-            bst.root,
-            term
-        )
+    sorted_terms = sorted(dictionary_terms)
+
+    build_balanced_bst(bst, sorted_terms)
 
     # BTree Creation
 
@@ -612,13 +690,13 @@ if st.button("Search"):
         if retrieval_method == "Keyword Matching":
             for token in query_tokens:
                 if token in index:
-                    results.update(index[token])
+                    results.update(index[token]["postings"])
 
         elif retrieval_method == "Boolean Retrieval":
             posting_lists = []
             for token in query_tokens:
                 if token in index:
-                    posting_lists.append(set(index[token]))
+                    posting_lists.append(set(index[token]["postings"]))
 
             if posting_lists:
                 results = set.intersection(*posting_lists)
@@ -839,12 +917,11 @@ if documents:
             if q.strip()
         ]
 
-        comparison_df = (
-            compare_search_performance(
-                queries,
-                bst,
-                btree
-            )
+        comparison_df = compare_search_performance(
+            queries,
+            bst,
+            btree,
+            index
         )
 
         st.subheader(
@@ -857,15 +934,23 @@ if documents:
         )
 
         bst_avg = comparison_df[
-            "BST Time (ms)"
+            "BST Search (ms)"
+        ].mean()
+
+        bst_retrieval_avg = comparison_df[
+            "BST Retrieval (ms)"
         ].mean()
 
         btree_avg = comparison_df[
-            "BTree Time (ms)"
+            "BTree Search (ms)"
+        ].mean()
+
+        btree_retrieval_avg = comparison_df[
+            "BTree Retrieval (ms)"
         ].mean()
 
         st.metric(
-            "Average BST Time",
+            "Average BST Search Time",
             round(
                 bst_avg,
                 6
@@ -873,9 +958,25 @@ if documents:
         )
 
         st.metric(
-            "Average BTree Time",
+            "Average BST Retrival Time",
+            round(
+                bst_retrieval_avg,
+                6
+            )
+        )
+
+        st.metric(
+            "Average BTree Search Time",
             round(
                 btree_avg,
+                6
+            )
+        )
+
+        st.metric(
+            "Average BTree Retrieval Time",
+            round(
+                btree_retrieval_avg,
                 6
             )
         )
