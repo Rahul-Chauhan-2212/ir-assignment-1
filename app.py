@@ -259,7 +259,7 @@ if documents:
                     apply_tolerant_retrieval(
                         query_tokens,
                         dictionary_terms,
-                        index
+                        kgram_index
                     )
                 )
 

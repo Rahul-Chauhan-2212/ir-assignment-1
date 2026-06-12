@@ -2,10 +2,16 @@ import re
 import time
 
 import streamlit as st
+import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download("punkt")
+nltk.download("punkt_tab")
 
 stop_words = set(stopwords.words("english"))
 

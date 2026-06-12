@@ -110,7 +110,7 @@ Comparison is performed using query-based TF-IDF cosine similarity scores.
 
 ---
 
-# Task C: Index Construction and Query Processing
+# Index Construction and Query Processing
 
 ## Inverted Index
 
