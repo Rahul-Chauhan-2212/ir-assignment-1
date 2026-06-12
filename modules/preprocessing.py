@@ -12,17 +12,27 @@ stemmer = PorterStemmer()
 lemmatizer = WordNetLemmatizer()
 
 
-def preprocess(
-        text,
-        use_lowercase=True,
-        remove_punctuation=True,
-        remove_stopwords=True,
-        hyphen_handling=True,
-        tokenization=True,
-        normalization_method="None"
-):
+# ==========================================
+#  Preprocess the documents
+# ==========================================
+def preprocess(text,
+               use_lowercase=True,
+               remove_punctuation=True,
+               remove_stopwords=True,
+               hyphen_handling=True,
+               tokenization=True,
+               normalization_method="None"
+               ):
     """
-    Complete preprocessing pipeline.
+    Apply Preprocessing Steps on documents and return Tokens and Intermediate Steps Results
+    :param text: Text to be preprocessed
+    :param use_lowercase: If Lowercase to be applied
+    :param remove_punctuation: If Punctuation Removal to be applied
+    :param remove_stopwords: If Stopwords to be Removed
+    :param hyphen_handling: If Hyphen Handling to be applied
+    :param tokenization: If Tokenization to be applied
+    :param normalization_method: Normalization Method -> Lemmatization OR Stemming
+    :return: Tokens and Intermediate Steps Results
     """
 
     intermediate_steps = {}
@@ -35,33 +45,21 @@ def preprocess(
     intermediate_steps["After Lowercase"] = text
 
     if hyphen_handling:
-        text = re.sub(
-            r"(?<=\w)-(?=\w)",
-            " ",
-            text
-        )
+        text = re.sub(r"(?<=\w)-(?=\w)", " ", text)
 
     intermediate_steps["After Hyphen Handling"] = text
 
     if remove_punctuation:
-        text = re.sub(
-            r"[^\w\s]",
-            "",
-            text
-        )
+        text = re.sub(r"[^\w\s]", "", text)
 
-    intermediate_steps[
-        "After Punctuation Removal"
-    ] = text
+    intermediate_steps["After Punctuation Removal"] = text
 
     if tokenization:
         tokens = word_tokenize(text)
     else:
         tokens = [text]
 
-    intermediate_steps[
-        "After Tokenization"
-    ] = tokens
+    intermediate_steps["After Tokenization"] = tokens
 
     if remove_stopwords:
         tokens = [
@@ -70,9 +68,7 @@ def preprocess(
             if token not in stop_words
         ]
 
-    intermediate_steps[
-        "After Stopword Removal"
-    ] = tokens
+    intermediate_steps["After Stopword Removal"] = tokens
 
     final_tokens = tokens
 
@@ -83,9 +79,7 @@ def preprocess(
             for token in tokens
         ]
 
-        intermediate_steps[
-            "After Stemming"
-        ] = final_tokens
+        intermediate_steps["After Stemming"] = final_tokens
 
     elif normalization_method == "Lemmatization":
 
@@ -94,8 +88,6 @@ def preprocess(
             for token in tokens
         ]
 
-        intermediate_steps[
-            "After Lemmatization"
-        ] = final_tokens
+        intermediate_steps["After Lemmatization"] = final_tokens
 
     return final_tokens, intermediate_steps

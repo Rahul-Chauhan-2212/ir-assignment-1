@@ -1,4 +1,3 @@
-import time
 from bisect import bisect_left
 
 
@@ -35,6 +34,12 @@ class BinarySearchTree:
         self.root = None
 
     def insert(self, root, key):
+        """
+        Binary Search Tree Insertion
+        :param root: Root node
+        :param key: Key to insert into
+        :return: Tree
+        """
 
         if root is None:
             return BSTNode(key)
@@ -56,6 +61,12 @@ class BinarySearchTree:
         return root
 
     def search(self, root, key):
+        """
+        Binary Search Tree Search
+        :param root: Root node
+        :param key: Key to search
+        :return: Node
+        """
 
         if root is None:
             return False
@@ -75,10 +86,7 @@ class BinarySearchTree:
 
 class BTreeNode:
 
-    def __init__(
-            self,
-            leaf=False
-    ):
+    def __init__(self, leaf=False):
         self.leaf = leaf
 
         self.keys = []
@@ -123,6 +131,12 @@ class BTree:
 
 
 def build_balanced_bst(bst, terms):
+    """
+    Build balanced BST
+    :param bst: BST
+    :param terms: Terms
+    :return: Balanced BST
+    """
     if not terms:
         return
 

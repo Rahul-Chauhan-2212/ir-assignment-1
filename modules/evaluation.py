@@ -6,26 +6,23 @@ import pandas as pd
 # Performance Comparison
 # ==========================================
 
-def compare_search_performance(
-        queries,
-        bst,
-        btree,
-        index
-):
+def compare_search_performance(queries, bst, btree, index):
+    """
+    Provide Comparison for BTree and BST Search
+    :param queries: queries to compare
+    :param bst: BST
+    :param btree: BTree
+    :param index: Inverted index
+    :return: Comparison Performance Metrics
+    """
     results = []
 
     for query in queries:
         start = time.perf_counter()
 
-        bst.search(
-            bst.root,
-            query
-        )
+        bst.search(bst.root, query)
 
-        bst_search_time = (
-                time.perf_counter()
-                - start
-        )
+        bst_search_time = time.perf_counter() - start
 
         start = time.perf_counter()
 
@@ -37,19 +34,13 @@ def compare_search_performance(
         for doc_id in postings:
             _ = doc_id
 
-        bst_retrieval_time = (
-                time.perf_counter()
-                - start
-        )
+        bst_retrieval_time = time.perf_counter() - start
 
         start = time.perf_counter()
 
         btree.search(query)
 
-        btree_search_time = (
-                time.perf_counter()
-                - start
-        )
+        btree_search_time = time.perf_counter() - start
 
         start = time.perf_counter()
 
@@ -61,10 +52,7 @@ def compare_search_performance(
         for doc_id in postings:
             _ = doc_id
 
-        btree_retrieval_time = (
-                time.perf_counter()
-                - start
-        )
+        btree_retrieval_time = time.perf_counter() - start
 
         results.append({
 

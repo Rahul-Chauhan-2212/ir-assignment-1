@@ -1,7 +1,10 @@
+# ==========================================
+# Phrase Search using Biword Indexes
+# ==========================================
 def biword_phrase_search(query_tokens, biword_index):
     """
     Returns documents based on query from biword index
-    :param query: User Query
+    :param query_tokens: User Query Tokens
     :param biword_index:  Biword Index
     :return: Documents
     """
@@ -29,10 +32,13 @@ def biword_phrase_search(query_tokens, biword_index):
     return list(set.intersection(*result_sets))
 
 
+# ==========================================
+# Phrase Search using Positional Indexes
+# ==========================================
 def positional_phrase_search(query_tokens, positional_index):
     """
     Returns documents based on query from positional index
-    :param query: User Query
+    :param query_tokens: User Query Token
     :param positional_index:  Positional Index
     :return: Documents
     """

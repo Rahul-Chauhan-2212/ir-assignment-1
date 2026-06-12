@@ -28,6 +28,12 @@ from modules.trees import (
     build_balanced_bst
 )
 
+# ========================================================================================================
+# NOTE: The code in broken module(individual Py files) for each step or process to reduce code complexity)
+#        The app.py contains usage of those steps and shows the Streamlit Results
+# =========================================================================================================
+
+
 # NLTK Library Downloads
 nltk.download('stopwords')
 nltk.download('wordnet')
@@ -91,10 +97,7 @@ if uploaded_file:
 
         if uploaded_file.name.endswith(".txt"):
 
-            content = uploaded_file.read().decode(
-                "utf-8",
-                errors="ignore"
-            )
+            content = uploaded_file.read().decode("utf-8", errors="ignore")
 
             documents = [
                 line.strip()
@@ -110,10 +113,7 @@ if uploaded_file:
 
             st.dataframe(df.head())
 
-            text_column = st.selectbox(
-                "Select Document Column",
-                df.columns
-            )
+            text_column = st.selectbox("Select Document Column", df.columns)
 
             documents = (
                 df[text_column]
@@ -122,14 +122,10 @@ if uploaded_file:
             )
 
     except Exception as e:
-
-        st.error(
-            f"File Error: {e}"
-        )
-
+        st.error(f"File Error: {e}")
         st.stop()
 
-# Initialise List of stop words, Stemmer and Lemmatizer Instances
+# Initialize List of stop words, Stemmer and Lemmatizer Instances
 stop_words = set(stopwords.words("english"))
 
 stemmer = PorterStemmer()
@@ -139,18 +135,24 @@ lemmatizer = WordNetLemmatizer()
 # Tabs for Document Previews, Preprocessing Results, Inverted Index
 if documents:
 
-    index = create_inverted_index(documents)
+    # Index creation process is present in indexing.py
+    # Creates Inverted Index
+    inverted_index = create_inverted_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
+                                           hyphen_handling, tokenization, normalization_method)
 
-    biword_index = create_biword_index(documents)
+    # Created Biword Index
+    biword_index = create_biword_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
+                                       hyphen_handling, tokenization, normalization_method)
 
-    positional_index = create_positional_index(documents)
+    # Creates Positional Index
+    positional_index = create_positional_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
+                                               hyphen_handling, tokenization, normalization_method)
 
     # Dictionary Terms
+    dictionary_terms = create_dictionary(inverted_index)
 
-    dictionary_terms = create_dictionary(index)
-
+    # BST and BTree Parts are present in trees.py
     # BST Creation
-
     bst = BinarySearchTree()
 
     sorted_terms = sorted(dictionary_terms)
@@ -158,12 +160,12 @@ if documents:
     build_balanced_bst(bst, sorted_terms)
 
     # BTree Creation
-
     btree = BTree()
 
     for term in dictionary_terms:
         btree.insert(term)
 
+    # Tabs and Columns to show Uploaded Documents, Preprocessing Results and Inverted Index
     st.header("Dataset Summary")
 
     col1, col2 = st.columns(2)
@@ -220,9 +222,7 @@ if documents:
                 term = token[0]
 
                 if term in index:
-                    st.success(
-                        f"Found in {index[term]['df']} document(s)"
-                    )
+                    st.success(f"Found in {index[term]['df']} document(s)")
 
                     st.write(
                         "Document IDs:",
@@ -231,13 +231,12 @@ if documents:
                 else:
                     st.warning("Term not found in index")
 
-    # Search Functionality
+    # ==========================================
+    #         Search Functionality
+    # ==========================================
     st.header("Search Query")
 
-    query = st.text_input(
-        "Enter Search Query",
-        key="search_query"
-    )
+    query = st.text_input("Enter Search Query", key="search_query")
 
     if st.button("Search"):
         if not query:
@@ -280,8 +279,9 @@ if documents:
                     with st.expander(f"Document {doc_id + 1}"):
                         st.write(documents[doc_id])
 
-
+    # ==========================================
     # Stemming vs Lemmatization Comparison
+    # ==========================================
     st.header("Stemming vs Lemmatization Comparison")
 
     if st.button("Run Comparison"):
@@ -328,9 +328,9 @@ if documents:
         lemma_matrix = vectorizer.fit_transform(lemma_docs)
 
         # Calculate Cosine Similarity Mean for both Stemming and Lemmatization
-        stem_score = (cosine_similarity(stem_matrix).mean())
+        stem_score = cosine_similarity(stem_matrix).mean()
 
-        lemma_score = (cosine_similarity(lemma_matrix).mean())
+        lemma_score = cosine_similarity(lemma_matrix).mean()
 
         st.info("TF-IDF Vectorization used and Cosine Similarity Score calculated for Stemming and Lemmatization")
 
@@ -366,13 +366,12 @@ if documents:
                 """
             )
 
-    # Phase Query Processing
+    # ==========================================
+    #            Phrase Query Processing
+    # ==========================================
     st.header("Phrase Query Processing")
 
-    phrase_query = st.text_input(
-        "Enter Phrase Query",
-        key="phrase_query"
-    )
+    phrase_query = st.text_input("Enter Phrase Query", key="phrase_query")
 
     if phrase_query:
 
@@ -385,6 +384,7 @@ if documents:
 
         col1, col2 = st.columns(2)
 
+        # Tabs to Shows Biword and Positional Index Results
         with col1:
 
             st.subheader("Biword Index Results")
@@ -455,28 +455,16 @@ if documents:
     # BST vs B-Tree Comparison
     # ==========================================
 
-    st.header(
-        "BST vs B-Tree Comparison"
-    )
+    st.header("BST vs B-Tree Comparison")
 
-    st.write(
-        f"Dictionary Size : {len(dictionary_terms)} terms"
-    )
+    st.write(f"Dictionary Size : {len(dictionary_terms)} terms")
 
-    with st.expander(
-            "Dictionary Sample"
-    ):
+    with st.expander("Dictionary Sample"):
         st.json(dictionary_terms[:20])
 
-    sample_queries = st.text_input(
-        "Enter Queries (comma separated)",
-        key="tree_queries",
-        value="batman,matrix,hero"
-    )
+    sample_queries = st.text_input("Enter Queries (comma separated)", key="tree_queries", value="batman,matrix,hero")
 
-    if st.button(
-            "Compare Trees"
-    ):
+    if st.button("Compare Trees"):
         queries = [
 
             q.strip()
@@ -486,73 +474,29 @@ if documents:
             if q.strip()
         ]
 
-        comparison_df = compare_search_performance(
-            queries,
-            bst,
-            btree,
-            index
-        )
+        comparison_df = compare_search_performance(queries, bst, btree, index)
 
-        st.subheader(
-            "Experimental Results"
-        )
+        st.subheader("Experimental Results")
 
-        st.dataframe(
-            comparison_df,
-            use_container_width=True
-        )
+        st.dataframe(comparison_df, use_container_width=True)
 
-        bst_avg = comparison_df[
-            "BST Search (ms)"
-        ].mean()
+        bst_avg = comparison_df["BST Search (ms)"].mean()
 
-        bst_retrieval_avg = comparison_df[
-            "BST Retrieval (ms)"
-        ].mean()
+        bst_retrieval_avg = comparison_df["BST Retrieval (ms)"].mean()
 
-        btree_avg = comparison_df[
-            "BTree Search (ms)"
-        ].mean()
+        btree_avg = comparison_df["BTree Search (ms)"].mean()
 
-        btree_retrieval_avg = comparison_df[
-            "BTree Retrieval (ms)"
-        ].mean()
+        btree_retrieval_avg = comparison_df["BTree Retrieval (ms)"].mean()
 
-        st.metric(
-            "Average BST Search Time",
-            round(
-                bst_avg,
-                6
-            )
-        )
+        st.metric("Average BST Search Time", round(bst_avg, 6))
 
-        st.metric(
-            "Average BST Retrival Time",
-            round(
-                bst_retrieval_avg,
-                6
-            )
-        )
+        st.metric("Average BST Retrival Time", round(bst_retrieval_avg, 6))
 
-        st.metric(
-            "Average BTree Search Time",
-            round(
-                btree_avg,
-                6
-            )
-        )
+        st.metric("Average BTree Search Time", round(btree_avg, 6))
 
-        st.metric(
-            "Average BTree Retrieval Time",
-            round(
-                btree_retrieval_avg,
-                6
-            )
-        )
+        st.metric("Average BTree Retrieval Time", round(btree_retrieval_avg, 6))
 
-        st.subheader(
-            "Inference"
-        )
+        st.subheader("Inference")
 
         st.info(
             """
