@@ -1,3 +1,5 @@
+import time
+
 import nltk
 import pandas as pd
 import streamlit as st
@@ -12,16 +14,16 @@ from modules.evaluation import (
     compare_search_performance
 )
 from modules.indexing import (
-    create_inverted_index,
-    create_biword_index,
-    create_positional_index,
-    create_dictionary
+    build_indexes
 )
 from modules.phrase_search import (
     biword_phrase_search,
     positional_phrase_search
 )
 from modules.preprocessing import preprocess
+from modules.tolerant_retrieval import (
+    apply_tolerant_retrieval
+)
 from modules.trees import (
     BinarySearchTree,
     BTree,
@@ -64,7 +66,6 @@ tokenization = st.sidebar.checkbox("Tokenization", value=True)
 normalization_method = st.sidebar.radio(
     "Normalization Method",
     [
-        "None",
         "Stemming",
         "Lemmatization"
     ]
@@ -135,21 +136,20 @@ lemmatizer = WordNetLemmatizer()
 # Tabs for Document Previews, Preprocessing Results, Inverted Index
 if documents:
 
+    start = time.perf_counter()
+    print("Start Indexes Creation")
     # Index creation process is present in indexing.py
-    # Creates Inverted Index
-    inverted_index = create_inverted_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
-                                           hyphen_handling, tokenization, normalization_method)
-
-    # Created Biword Index
-    biword_index = create_biword_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
-                                       hyphen_handling, tokenization, normalization_method)
-
-    # Creates Positional Index
-    positional_index = create_positional_index(documents, use_lowercase, remove_punctuation, remove_stopwords,
-                                               hyphen_handling, tokenization, normalization_method)
-
-    # Dictionary Terms
-    dictionary_terms = create_dictionary(inverted_index)
+    (
+        inverted_index,
+        biword_index,
+        positional_index,
+        dictionary_terms,
+        kgram_index
+    ) = build_indexes(documents, use_lowercase, remove_punctuation, remove_stopwords, hyphen_handling, tokenization,
+                      normalization_method)
+    print("End Index Creation")
+    end = time.perf_counter()
+    print("Total Time: {} seconds".format(end - start))
 
     # BST and BTree Parts are present in trees.py
     # BST Creation
@@ -174,7 +174,7 @@ if documents:
         st.metric("Total Documents", len(documents))
 
     with col2:
-        st.metric("Vocabulary Size", len(index))
+        st.metric("Vocabulary Size", len(inverted_index))
 
     tab1, tab2, tab3 = st.tabs(
         [
@@ -204,9 +204,9 @@ if documents:
 
     with tab3:
         # Shows Inverted Index for the document
-        st.metric("Unique Terms", len(index))
+        st.metric("Unique Terms", len(inverted_index))
 
-        sample_index = dict(list(index.items())[:20])
+        sample_index = dict(list(inverted_index.items())[:20])
 
         with st.expander("Sample Inverted Index"):
             st.json(sample_index)
@@ -221,12 +221,12 @@ if documents:
             if token:
                 term = token[0]
 
-                if term in index:
-                    st.success(f"Found in {index[term]['df']} document(s)")
+                if term in inverted_index:
+                    st.success(f"Found in {inverted_index[term]['df']} document(s)")
 
                     st.write(
                         "Document IDs:",
-                        [x + 1 for x in index[term]["postings"]]
+                        [x + 1 for x in inverted_index[term]["postings"]]
                     )
                 else:
                     st.warning("Term not found in index")
@@ -254,16 +254,33 @@ if documents:
 
             # Retrieval Based on Selected Option
             if retrieval_method == "Keyword Matching":
+                # Tolerant Retrieval Methods can be applied for Keyword Searching as we are not searching for exact match here like Boolean Retrieval
+                query_tokens, correction_messages = (
+                    apply_tolerant_retrieval(
+                        query_tokens,
+                        dictionary_terms,
+                        index
+                    )
+                )
+
+                if correction_messages:
+                    st.info(
+                        "\n".join(
+                            correction_messages
+                        )
+                    )
                 for token in query_tokens:
-                    if token in index:
-                        results.update(index[token]["postings"])
+                    if token in inverted_index:
+                        results.update(inverted_index[token]["postings"])
 
             elif retrieval_method == "Boolean Retrieval":
                 posting_lists = []
                 for token in query_tokens:
-                    if token in index:
-                        posting_lists.append(set(index[token]["postings"]))
+                    if token in inverted_index:
+                        posting_lists.append(set(inverted_index[token]["postings"]))
 
+                # This currently checks implements only AND(Exact Match) i.e. terms1 term2 term3 -> term1 AND term2 AND term3
+                # This can be modified to have OR and NOT. For simplicity not implemented boolean query search
                 if posting_lists:
                     results = set.intersection(*posting_lists)
 
@@ -286,85 +303,182 @@ if documents:
 
     if st.button("Run Comparison"):
 
-        stem_docs = []
-        lemma_docs = []
+        if not query:
+            st.warning("Please enter a search query first.")
+        else:
 
-        for doc in documents:
-            doc = doc.lower()
+            # ------------------------------------
+            # Create Stemmed Documents
+            # ------------------------------------
 
-            tokens = word_tokenize(doc)
+            stem_docs = []
 
-            tokens = [
+            for doc in documents:
+                tokens = word_tokenize(doc.lower())
+
+                tokens = [
+                    t
+                    for t in tokens
+                    if t not in stop_words
+                ]
+
+                stem_docs.append(
+                    " ".join(
+                        [
+                            stemmer.stem(t)
+                            for t in tokens
+                        ]
+                    )
+                )
+
+            # ------------------------------------
+            # Create Lemmatized Documents
+            # ------------------------------------
+
+            lemma_docs = []
+
+            for doc in documents:
+                tokens = word_tokenize(doc.lower())
+
+                tokens = [
+                    t
+                    for t in tokens
+                    if t not in stop_words
+                ]
+
+                lemma_docs.append(
+                    " ".join(
+                        [
+                            lemmatizer.lemmatize(t)
+                            for t in tokens
+                        ]
+                    )
+                )
+
+            # ------------------------------------
+            # Process Query for Stemming
+            # ------------------------------------
+
+            query_tokens = word_tokenize(query.lower())
+
+            query_tokens = [
                 t
-                for t in tokens
+                for t in query_tokens
                 if t not in stop_words
             ]
 
-            # Create Stemmed Docs from created stemmed tokens
-            stem_docs.append(
-                " ".join(
-                    [
-                        stemmer.stem(t)
-                        for t in tokens
-                    ]
-                )
-            )
-
-            # Create Lemmatized docs from created lemmatized tokens
-            lemma_docs.append(
-                " ".join(
-                    [
-                        lemmatizer.lemmatize(t)
-                        for t in tokens
-                    ]
-                )
-            )
-
-        # Using TF-IDF Vectorization Technique to create vector metrix
-        vectorizer = TfidfVectorizer()
-
-        stem_matrix = vectorizer.fit_transform(stem_docs)
-
-        lemma_matrix = vectorizer.fit_transform(lemma_docs)
-
-        # Calculate Cosine Similarity Mean for both Stemming and Lemmatization
-        stem_score = cosine_similarity(stem_matrix).mean()
-
-        lemma_score = cosine_similarity(lemma_matrix).mean()
-
-        st.info("TF-IDF Vectorization used and Cosine Similarity Score calculated for Stemming and Lemmatization")
-
-        # Create Comparison table and Conclusion
-        comparison_df = pd.DataFrame({
-            "Technique":
+            stem_query = " ".join(
                 [
+                    stemmer.stem(t)
+                    for t in query_tokens
+                ]
+            )
+
+            lemma_query = " ".join(
+                [
+                    lemmatizer.lemmatize(t)
+                    for t in query_tokens
+                ]
+            )
+
+            # ------------------------------------
+            # TF-IDF Representation
+            # ------------------------------------
+
+            stem_vectorizer = TfidfVectorizer()
+
+            stem_doc_matrix = stem_vectorizer.fit_transform(stem_docs)
+
+            stem_query_vector = stem_vectorizer.transform([stem_query])
+
+            stem_similarity = cosine_similarity(stem_query_vector, stem_doc_matrix)[0]
+
+            # ------------------------------------
+
+            lemma_vectorizer = TfidfVectorizer()
+
+            lemma_doc_matrix = lemma_vectorizer.fit_transform(lemma_docs)
+
+            lemma_query_vector = lemma_vectorizer.transform([lemma_query])
+
+            lemma_similarity = cosine_similarity(lemma_query_vector, lemma_doc_matrix)[0]
+
+            # ------------------------------------
+            # Comparison Metrics
+            # ------------------------------------
+
+            stem_score = stem_similarity.max()
+
+            lemma_score = lemma_similarity.max()
+
+            comparison_df = pd.DataFrame({
+
+                "Technique": [
                     "Stemming",
                     "Lemmatization"
                 ],
-            "Similarity Score":
-                [
+
+                "Top Retrieval Similarity": [
                     round(stem_score, 4),
                     round(lemma_score, 4)
                 ]
-        })
+            })
 
-        st.table(comparison_df)
+            st.table(comparison_df)
 
-        if lemma_score > stem_score:
-            st.success(
-                """
-                Conclusion:
-                Lemmatization performs better on this dataset because it preserves semantic meaning
-                while reducing words to their dictionary form.
-                """
-            )
-        else:
-            st.success(
-                """
-                Conclusion:
-                Stemming performs better on this dataset because it reduces vocabulary size more aggressively.
-                """
-            )
+            st.subheader("Query Used")
+
+            st.code(query)
+
+            st.subheader("Processed Queries")
+
+            st.write(f"Stemmed Query: {stem_query}")
+
+            st.write(f"Lemmatized Query: {lemma_query}")
+
+            if lemma_score > stem_score:
+
+                st.success(
+                    """
+                    Conclusion:
+
+                    Lemmatization produced a higher
+                    retrieval similarity score for
+                    the selected query.
+
+                    Therefore lemmatization is more
+                    suitable for this dataset because
+                    it preserves semantic meaning
+                    while normalizing terms.
+                    """
+                )
+
+            elif stem_score > lemma_score:
+
+                st.success(
+                    """
+                    Conclusion:
+
+                    Stemming produced a higher
+                    retrieval similarity score for
+                    the selected query.
+
+                    Therefore stemming is more
+                    suitable for this dataset because
+                    it aggressively reduces term
+                    variations and increases matches.
+                    """
+                )
+
+            else:
+
+                st.info(
+                    """
+                    Both techniques produced
+                    similar retrieval effectiveness
+                    for the selected query.
+                    """
+                )
 
     # ==========================================
     #            Phrase Query Processing

@@ -1,5 +1,7 @@
 import re
+import time
 
+import streamlit as st
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
@@ -50,7 +52,8 @@ def preprocess(text,
     intermediate_steps["After Hyphen Handling"] = text
 
     if remove_punctuation:
-        text = re.sub(r"[^\w\s]", "", text)
+        text = re.sub(r'\[\d+\]', '', text)  # remove citations
+        text = re.sub(r'[^\w\s]', '', text)  # remove punctuation
 
     intermediate_steps["After Punctuation Removal"] = text
 
@@ -91,3 +94,37 @@ def preprocess(text,
         intermediate_steps["After Lemmatization"] = final_tokens
 
     return final_tokens, intermediate_steps
+
+
+@st.cache_resource
+def preprocess_documents(documents, use_lowercase=True,
+                         remove_punctuation=True,
+                         remove_stopwords=True,
+                         hyphen_handling=True,
+                         tokenization=True,
+                         normalization_method="None"):
+    """
+    Preprocess Documents
+    :param documents: Preprocessed Documents
+    :param use_lowercase: If Lowercase to be applied
+    :param remove_punctuation: If Punctuation Removal to be applied
+    :param remove_stopwords: If Stopwords to be Removed
+    :param hyphen_handling: If Hyphen Handling to be applied
+    :param tokenization: If Tokenization to be applied
+    :param normalization_method: If Normalization Method to be applied
+    :return: Proceessed Documents
+    """
+    processed_docs = []
+    start = time.perf_counter()
+    print("Preprocessing Documents...")
+    for doc_id, doc in enumerate(documents):
+        tokens, _ = preprocess(doc, use_lowercase, remove_punctuation, remove_stopwords, hyphen_handling, tokenization,
+                               normalization_method)
+
+        processed_docs.append({"doc_id": doc_id,
+                               "tokens": tokens})
+
+    end = time.perf_counter()
+    print("Preprocessing Documents Complete in {} seconds".format(end - start))
+
+    return processed_docs
